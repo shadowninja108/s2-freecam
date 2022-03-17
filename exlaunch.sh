@@ -7,7 +7,7 @@
 # How you're loading your module. Used to determine how to find the target module. (AsRtld/Module/Kip)
 export LOAD_KIND="Module"
 # Program you're targetting. Used to determine where to deploy your files.
-export PROGRAM_ID="0100801011c3e000"
+export PROGRAM_ID="01003bc0000a0000"
 # Optional path to copy the final ELF to, for convenience.
 export ELF_EXTRACT=""
 # Python command to use. Must be Python 3.4+.
