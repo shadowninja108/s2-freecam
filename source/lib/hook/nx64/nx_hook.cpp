@@ -31,7 +31,7 @@
 #include <stdlib.h>
 
 #include "nx_hook.hpp"
-#include "rw_pages.hpp"
+#include "util/sys/jit.hpp"
 
 
 #define __attribute __attribute__
@@ -48,18 +48,20 @@
 #define __atomic_increase(p) __sync_add_and_fetch(p, 1)
 #define __sync_cmpswap(p, v, n) __sync_bool_compare_and_swap(p, v, n)
 
-namespace exl::util {
+namespace exl::hook::nx64 {
 
     namespace {
 
         // Hooking constants
+        constexpr size_t HookPoolSize = setting::JitSize;
         constexpr s64 MaxInstructions = 5;
-        constexpr u64 HookMax = 10;
         constexpr size_t TrampolineSize = MaxInstructions * 10;
+        constexpr u64 HookMax = HookPoolSize / (TrampolineSize * sizeof(uint32_t));
         constexpr u64 MaxReferences = MaxInstructions * 2;
         constexpr u32 Aarch64Nop = 0xd503201f;
+
         typedef uint32_t HookPool[HookMax][TrampolineSize];
-        constexpr size_t HookPoolSize = ALIGN_UP(sizeof(HookPool), PAGE_SIZE);
+        static_assert(sizeof(HookPool) <= HookPoolSize, "");
 
         // Inline hooking constants
         extern const u64 InlineHandlerStart;
@@ -521,18 +523,12 @@ namespace exl::util {
 
 //-------------------------------------------------------------------------
 
-Jit Hook::s_HookJit;
 //static nn::os::MutexType hookMutex;
 
 //-------------------------------------------------------------------------
 
-void Hook::Initialize() {
-    /* TODO: thread safety */
-
-    alignas(PAGE_SIZE) static u8 hookJitRw[HookPoolSize] = {};
-
-    R_ABORT_UNLESS(jitCreate(&s_HookJit, &hookJitRw, HookPoolSize));
-    R_ABORT_UNLESS(jitTransitionToExecutable(&s_HookJit));
+void Initialize() {
+    exl::util::jit::Initialize();
 
     /* TODO: inline hooks */
     /*static u8 _inlhk_rw[InlineHookPoolSize];
@@ -542,7 +538,7 @@ void Hook::Initialize() {
 
 //-------------------------------------------------------------------------
 
-Result Hook::AllocForTrampoline(uint32_t** rx, uint32_t** rw) {
+Result AllocForTrampoline(uint32_t** rx, uint32_t** rw) {
     static_assert((TrampolineSize * sizeof(uint32_t)) % 8 == 0, "8-byte align");
     static volatile s32 index = -1;
 
@@ -551,8 +547,8 @@ Result Hook::AllocForTrampoline(uint32_t** rx, uint32_t** rw) {
     if(i > HookMax)
         return result::HookTrampolineAllocFail;
 
-    HookPool* rwptr = (HookPool*)s_HookJit.rw_addr;
-    HookPool* rxptr = (HookPool*)s_HookJit.rx_addr;
+    HookPool* rwptr = (HookPool*)util::jit::GetRw();
+    HookPool* rxptr = (HookPool*)util::jit::GetRo();
     *rw = (*rwptr)[i];
     *rx = (*rxptr)[i];
 
@@ -610,10 +606,12 @@ static bool HookFuncImpl(void* const symbol, void* const replace, void* const rx
     return true;
 }
 
-uintptr_t Hook::HookFuncCommon(uintptr_t hook, uintptr_t callback, bool do_trampoline) {
-    /* TODO: thread safety */
+uintptr_t HookFuncCommon(uintptr_t hook, uintptr_t callback, bool do_trampoline) {
+    
+    EXL_ASSERT(hook != 0);
+    EXL_ASSERT(callback != 0);
 
-    R_ABORT_UNLESS(jitTransitionToWritable(&s_HookJit));
+    /* TODO: thread safety */
 
     u32* rxtrampoline = NULL;
     u32* rwtrampoline = NULL;
@@ -623,7 +621,7 @@ uintptr_t Hook::HookFuncCommon(uintptr_t hook, uintptr_t callback, bool do_tramp
     if (!HookFuncImpl(reinterpret_cast<void*>(hook), reinterpret_cast<void*>(callback), rxtrampoline, rwtrampoline))
         EXL_ABORT(exl::result::HookFailed);
 
-    R_ABORT_UNLESS(jitTransitionToExecutable(&s_HookJit));
+    util::jit::Flush();
 
     return (uintptr_t) rxtrampoline;
 }
