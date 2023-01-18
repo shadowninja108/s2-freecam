@@ -1,5 +1,5 @@
 # s2-freecam
-A proof of concept demonstrating using agl's built-in debug free camera in Splatoon 2. Knowledge here is roughly transferable to any game that uses agl and also uses `agl::lyr::Renderer` for rendering.
+A proof of concept demonstrating using agl's built-in debug free camera in Splatoon 2. Knowledge here is roughly transferable to any game that uses agl and also uses `agl::lyr::Renderer` for rendering. This code specifically targets version 5.5.0.
 
 # Note
 This project is a proof of concept. No support will be provided.
